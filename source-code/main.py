@@ -6,13 +6,15 @@
 import requests
 import re
 import os
+import time
 
 from typing import List
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 # Master: ele lista várias versões do mesmo vídeo em diferentes qualidades e resoluções
 MASTER_FILE_URL: str = ""
-OUTPUT_PATH: Path = Path(r".")
+OUTPUT_PATH: Path = Path(r"")
 MASTER_FILENAME: str = "master.m3u8"
 PLAYLIST_FILENAME: str = "playlist.m3u8"
 
@@ -75,6 +77,9 @@ def findBestVideoQuality(resolutions: List[str]) -> str:
     return bestResolution
 
 def downloadVideoSegments(baseM3U8PlaylistURL: str, videoSegments: List[str]) -> None:
+    segmentsURL: List[str] = []
+    segmentPaths: List[Path] = []
+
     for videoSegment in videoSegments:
         newURL: str = videoSegment
         filename: str = getFilenameInURL(videoSegment)
@@ -88,10 +93,19 @@ def downloadVideoSegments(baseM3U8PlaylistURL: str, videoSegments: List[str]) ->
 
         os.makedirs(os.path.dirname(segmentPath), exist_ok=True)
 
-        print(f"Downloading {newURL} in {segmentPath}")
+        segmentsURL.append(newURL)
+        segmentPaths.append(segmentPath)
 
-        with open(segmentPath, "wb") as segmentFile:
-            segmentFile.write(requests.get(newURL).content)
+    print("Starting segments download")
+
+    with ThreadPoolExecutor(max_workers=30) as threadPoolExecutor:
+        threadPoolExecutor.map(downloadAndSaveSegment, segmentsURL, segmentPaths)
+
+def downloadAndSaveSegment(segmentURL: str, segmentPath: Path) -> None:
+    with open(segmentPath, "wb") as segmentFile:
+        segmentFile.write(requests.get(segmentURL).content)
+
+    print(f"Downloaded {segmentURL} in {segmentPath}")
 
 def main() -> None:
     baseURL: str = getBaseURL(MASTER_FILE_URL)
