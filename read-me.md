@@ -1,2 +1,2 @@
-# hls-downloader
+# HLS Downloader
 Baixador de vídeo HLS.
