@@ -1,22 +1,20 @@
 '''
-    Autor: Marco Guilherme
-    Data: 02/12/2025
+    Author: Marco Guilherme
+    Date: 02/12/2025
 '''
 
 import requests
 import re
 import os
-import time
 
 from typing import List
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
-# Master: ele lista várias versões do mesmo vídeo em diferentes qualidades e resoluções
-MASTER_FILE_URL: str = ""
-OUTPUT_PATH: Path = Path(r"")
-MASTER_FILENAME: str = "master.m3u8"
-PLAYLIST_FILENAME: str = "playlist.m3u8"
+import constants
+
+MASTER_FILE_URL: str = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
+OUTPUT_PATH: Path = Path(Path(__file__).parent.parent, "output") # ..\output
 
 def downloadFileContent(fileURL: str) -> str:
     with requests.get(fileURL) as fileResponse:
@@ -55,26 +53,42 @@ def downloadAndSaveFile(fileURL: str, outputPath: Path, outputFilename: str) -> 
 
 # ---------------
 
-def findBestVideoQuality(resolutions: List[str]) -> str:
-    if(not len(resolutions)):
-        raise Exception("Empty qualities")
-
-    bestResolution: str = ""
+def findBestVideoQuality(masterFileContent: str) -> str:
+    lines: List[str] = masterFileContent.splitlines()
+    index: int = 0
+    bestResolutionPlaylist: str = ''
     bestHeight: int = -1
 
-    for resolution in resolutions:
-        match: (re.Match[str] | None) = re.search(r"(\d+)p", resolution)
+    while(index < len(lines)):
+        currentLine: str = lines[index]
+        hasNextLine: bool = index < (len(lines) - 1)
+        nextLine: str = ''
 
-        if(not match):
-            continue
+        if(hasNextLine):
+            nextLine = lines[index + 1]
 
-        height: int = int(match.group(1))
+        if(currentLine.startswith("#EXT-X-STREAM-INF") and hasNextLine):
+            nameMatch: (re.Match[str] | None) = re.search(r'NAME="([^"]+)"', currentLine)
+            qualityMatch: (re.Match[str] | None) = None
 
-        if(height > bestHeight):
-            bestHeight = height
-            bestResolution = resolution
+            if(nameMatch):
+                qualityValue: str = nameMatch.group(1) # 1080 ou 1080p
+                qualityMatch = re.search(r"(\d+)", qualityValue)
+            else:
+                qualityMatch = re.search(r"(\d+)p", nextLine)
 
-    return bestResolution
+            if(qualityMatch):
+                height: int = int(qualityMatch.group(1))
+
+                if(height > bestHeight):
+                    bestHeight = height
+                    bestResolutionPlaylist = nextLine
+
+        index += 1
+
+    print(f"Best quality: {bestHeight}")
+
+    return bestResolutionPlaylist
 
 def downloadVideoSegments(baseM3U8PlaylistURL: str, videoSegments: List[str]) -> None:
     segmentsURL: List[str] = []
@@ -113,29 +127,26 @@ def main() -> None:
     print(f"Master file URL: {MASTER_FILE_URL}")
     print(f"Base URL: {baseURL}")
 
-    masterFileResponse: str = downloadAndSaveFile(MASTER_FILE_URL, OUTPUT_PATH, MASTER_FILENAME)
+    masterFileResponse: str = downloadAndSaveFile(MASTER_FILE_URL, OUTPUT_PATH, constants.MASTER_FILENAME)
 
-    videoQualities: List[str] = filterResponseBySuffix(masterFileResponse, ".m3u8")
+    bestVideoQuality: str = findBestVideoQuality(masterFileResponse)
 
-    for quality in videoQualities:
-        print(f"Quality: {quality}")
-
-    bestVideoQuality: str = findBestVideoQuality(videoQualities)
-
-    print("Best video quality", bestVideoQuality)
+    print("Best video quality playlist:", bestVideoQuality)
 
     bestM3U8PlaylistURL: str = getBaseURL(MASTER_FILE_URL) + bestVideoQuality
+    bestM3U8PlaylistParentURL: str = getBaseURL(bestM3U8PlaylistURL)
 
     print(f"Best resolution M3U8 playlist URL: {bestM3U8PlaylistURL}")
+    print(f"Best resolution M3U8 playlist parent URL (segment base): {bestM3U8PlaylistParentURL}")
 
-    bestM3U8PlaylistResponse: str = downloadAndSaveFile(bestM3U8PlaylistURL, OUTPUT_PATH, PLAYLIST_FILENAME)
+    bestM3U8PlaylistResponse: str = downloadAndSaveFile(bestM3U8PlaylistURL, OUTPUT_PATH, constants.PLAYLIST_FILENAME)
 
     videoSegments: List[str] = filterResponseBySuffix(bestM3U8PlaylistResponse, ".ts")
 
     for videoSegment in videoSegments:
         print(f"Video segment: {videoSegment}")
 
-    downloadVideoSegments(baseURL, videoSegments)
+    downloadVideoSegments(bestM3U8PlaylistParentURL, videoSegments)
 
 if(__name__ == "__main__"):
     main()
