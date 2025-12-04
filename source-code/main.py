@@ -6,10 +6,12 @@
 import requests
 import re
 import os
+import subprocess
 
 from typing import List
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 
 import constants
 
@@ -93,6 +95,9 @@ def findBestVideoQuality(masterFileContent: str) -> str:
 def downloadVideoSegments(baseM3U8PlaylistURL: str, videoSegments: List[str]) -> None:
     segmentsURL: List[str] = []
     segmentPaths: List[Path] = []
+    downloadStart: datetime = None
+    downloadEnd: datetime = None
+    downloadDuration: timedelta = None
 
     for videoSegment in videoSegments:
         newURL: str = videoSegment
@@ -112,17 +117,68 @@ def downloadVideoSegments(baseM3U8PlaylistURL: str, videoSegments: List[str]) ->
 
     print("Starting segments download")
 
-    with ThreadPoolExecutor(max_workers=30) as threadPoolExecutor:
-        threadPoolExecutor.map(downloadAndSaveSegment, segmentsURL, segmentPaths)
+    downloadStart = datetime.now()
 
-def downloadAndSaveSegment(segmentURL: str, segmentPath: Path) -> None:
-    with open(segmentPath, "wb") as segmentFile:
-        segmentFile.write(requests.get(segmentURL).content)
+    with ThreadPoolExecutor(max_workers=30) as threadPoolExecutor:
+        threadPoolExecutor.map(downloadAndSaveVideoSegment, segmentsURL, segmentPaths)
+
+    downloadEnd = datetime.now()
+    downloadDuration = downloadEnd - downloadStart
+
+    print(f"Download elapsed time (seconds): {downloadDuration.total_seconds()}")
+
+def downloadAndSaveVideoSegment(segmentURL: str, segmentPath: Path) -> None:
+    with requests.get(segmentURL) as fileResponse:
+        fileResponse.raise_for_status()
+
+        with open(segmentPath, "wb") as segmentFile:
+            segmentFile.write(fileResponse.content)
 
     print(f"Downloaded {segmentURL} in {segmentPath}")
 
+def isFFmpegInstalled() -> bool:
+    command: List[str] = [
+        "ffmpeg",
+        "-version"
+    ]
+
+    try:
+        subprocess.run(
+            command,
+            stdout = subprocess.PIPE,
+            stderr = subprocess.PIPE,
+            check = True
+        )
+
+        return True
+
+    except Exception:
+        return False
+
+def concatenateVideoSegments() -> None:
+    if(not isFFmpegInstalled()):
+        raise FileNotFoundError("FFmpeg not found in system path")
+
+    command: List[str] = [
+        "ffmpeg",
+        "-i",
+        f".\\{constants.PLAYLIST_FILENAME}",
+        "-c",
+        "copy",
+        f".\\{constants.OUTPUT_FILENAME}"
+    ]
+
+    subprocess.run(
+        command,
+        cwd=OUTPUT_PATH,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
+
 def main() -> None:
     baseURL: str = getBaseURL(MASTER_FILE_URL)
+    outputFileAbsolutePath: Path = Path(OUTPUT_PATH, constants.OUTPUT_FILENAME)
 
     print(f"Master file URL: {MASTER_FILE_URL}")
     print(f"Base URL: {baseURL}")
@@ -147,6 +203,13 @@ def main() -> None:
         print(f"Video segment: {videoSegment}")
 
     downloadVideoSegments(bestM3U8PlaylistParentURL, videoSegments)
+
+    print("Concatenating segments of the video...")
+
+    concatenateVideoSegments()
+
+    print(f"Video downloaded to {outputFileAbsolutePath}")
+    print("Done")
 
 if(__name__ == "__main__"):
     main()
