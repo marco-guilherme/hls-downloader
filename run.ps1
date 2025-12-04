@@ -1,5 +1,5 @@
-# Autor: Marco Guilherme
-# Data: 02/12/2025
+# Author: Marco Guilherme
+# Date: 02/12/2025
 
 function Main {
     .\hls-downloader-virtual-environment\Scripts\activate
