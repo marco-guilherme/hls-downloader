@@ -6,52 +6,18 @@
 import requests
 import re
 import os
-import subprocess
 import argparse
 
 from typing import List
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from urllib.parse import ParseResult
 
 import constants
 
-def downloadFileContent(fileURL: str) -> str:
-    with requests.get(fileURL) as fileResponse:
-        fileResponse.raise_for_status()
-
-        return fileResponse.text
-
-def writeFile(outputPath: Path, filename: str, fileContent: str) -> None:
-    with open(Path(outputPath, filename), 'w', encoding="utf-8") as fileOutput:
-        fileOutput.write(fileContent)
-
-def getBaseURL(fullURL: str) -> str:
-    return fullURL.rsplit('/', 1)[0] + '/'
-
-def getFilenameInURL(fullURL: str) -> str:
-    return fullURL.rsplit('/', 1).pop()
-
-def filterResponseBySuffix(requestResponse: str, suffix: str) -> List[str]:
-    filteredLines: List[str] = []
-    lines: List[str] = requestResponse.splitlines()
-
-    for fileLine in lines:
-        if(not fileLine.endswith(suffix)):
-            continue
-
-        filteredLines.append(fileLine)
-
-    return filteredLines
-
-def downloadAndSaveFile(fileURL: str, outputPath: Path, outputFilename: str) -> str:
-    fileContent: str = downloadFileContent(fileURL)
-
-    writeFile(outputPath, outputFilename, fileContent)
-
-    return fileContent
-
-# ---------------
+from utilities import url_utilities
+from helpers import helpers
 
 def findBestVideoQuality(masterFileContent: str) -> str:
     lines: List[str] = masterFileContent.splitlines()
@@ -90,22 +56,25 @@ def findBestVideoQuality(masterFileContent: str) -> str:
 
     return bestResolutionPlaylist
 
-def downloadVideoSegments(absolutePathOutput: Path, baseM3U8PlaylistURL: str, videoSegments: List[str], isVerbose: bool) -> None:
-    segmentsURL: List[str] = []
+def downloadVideoSegments(absolutePathOutput: Path,
+                          baseM3U8PlaylistURL: ParseResult,
+                          videoSegments: List[str],
+                          isVerbose: bool) -> None:
+    segmentsURL: List[ParseResult] = []
     segmentPaths: List[Path] = []
     downloadStart: datetime = None
     downloadEnd: datetime = None
     downloadDuration: timedelta = None
 
     for videoSegment in videoSegments:
-        newURL: str = videoSegment
-        filename: str = getFilenameInURL(videoSegment)
-        isRelativeURL: bool = not videoSegment.startswith("http")
+        newURL: ParseResult = url_utilities.parseURL(videoSegment)
+        filename: str = url_utilities.getFilenameInURL(newURL)
+        isRelativeURL: bool = not newURL.scheme.startswith("http")
         segmentPath: Path = Path(absolutePathOutput, filename)
 
         # 1080p.h264.mp4/seg-60-v1-a1.ts
         if(isRelativeURL):
-            newURL = f"{baseM3U8PlaylistURL}{videoSegment}"
+            newURL = url_utilities.concatenateURL(baseM3U8PlaylistURL, videoSegment)
             segmentPath = Path(absolutePathOutput, videoSegment)
 
         os.makedirs(os.path.dirname(segmentPath), exist_ok=True)
@@ -130,82 +99,46 @@ def downloadVideoSegments(absolutePathOutput: Path, baseM3U8PlaylistURL: str, vi
 
     print(f"Download elapsed time (seconds): {downloadDuration.total_seconds()}")
 
-def downloadAndSaveVideoSegment(segmentURL: str, segmentPath: Path, isVerbose: bool) -> None:
-    with requests.get(segmentURL) as fileResponse:
+def downloadAndSaveVideoSegment(segmentURL: ParseResult, segmentPath: Path, isVerbose: bool) -> None:
+    with requests.get(segmentURL.geturl()) as fileResponse:
         fileResponse.raise_for_status()
 
         with open(segmentPath, "wb") as segmentFile:
             segmentFile.write(fileResponse.content)
 
     if(isVerbose):
-        print(f"Downloaded {segmentURL} in {segmentPath}")
+        print(f"Downloaded {segmentURL.geturl()} in {segmentPath}")
 
-def isFFmpegInstalled() -> bool:
-    command: List[str] = [
-        "ffmpeg",
-        "-version"
-    ]
-
-    try:
-        subprocess.run(
-            command,
-            stdout = subprocess.PIPE,
-            stderr = subprocess.PIPE,
-            check = True
-        )
-
-        return True
-
-    except Exception:
-        return False
-
-def concatenateVideoSegments(absolutePathOutput: Path) -> None:
-    if(not isFFmpegInstalled()):
-        raise FileNotFoundError("FFmpeg not found in system path")
-
-    command: List[str] = [
-        "ffmpeg",
-        "-i",
-        f".\\{constants.PLAYLIST_FILENAME}",
-        "-c",
-        "copy",
-        f".\\{constants.OUTPUT_FILENAME}"
-    ]
-
-    subprocess.run(
-        command,
-        cwd=absolutePathOutput,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True
-    )
-
-def handleHLS(masterFileURL: str, absolutePathOutput: Path, isVerbose: bool) -> None:
-    baseURL: str = getBaseURL(masterFileURL)
+def handleHLS(masterFileURL: ParseResult, absolutePathOutput: Path, isVerbose: bool) -> None:
+    baseURL: ParseResult = url_utilities.getBaseURL(masterFileURL)
     outputFileAbsolutePath: Path = Path(absolutePathOutput, constants.OUTPUT_FILENAME)
 
-    print(f"Master file URL: {masterFileURL}")
+    print(f"Master file URL: {masterFileURL.geturl()}")
 
     if(isVerbose):
-        print(f"Base URL: {baseURL}")
+        print(f"Base URL: {baseURL.geturl()}")
 
-    masterFileResponse: str = downloadAndSaveFile(masterFileURL, absolutePathOutput, constants.MASTER_FILENAME)
+    masterFileResponse: str = helpers.downloadAndSaveFile(
+        masterFileURL,
+        absolutePathOutput,
+        constants.MASTER_FILENAME
+    )
 
     bestVideoQuality: str = findBestVideoQuality(masterFileResponse)
 
     if(isVerbose):
         print("Best video quality playlist:", bestVideoQuality)
 
-    bestM3U8PlaylistURL: str = getBaseURL(masterFileURL) + bestVideoQuality
-    bestM3U8PlaylistParentURL: str = getBaseURL(bestM3U8PlaylistURL)
+    bestM3U8PlaylistURL: ParseResult = url_utilities.concatenateURL(baseURL, bestVideoQuality)
+    bestM3U8PlaylistParentURL: ParseResult = url_utilities.getBaseURL(bestM3U8PlaylistURL)
 
     if(isVerbose):
-        print(f"Best resolution M3U8 playlist URL: {bestM3U8PlaylistURL}")
-        print(f"Best resolution M3U8 playlist parent URL (segment base): {bestM3U8PlaylistParentURL}")
+        print(f"Best resolution M3U8 playlist URL: {bestM3U8PlaylistURL.geturl()}")
+        print(f"Best resolution M3U8 playlist parent URL (segment base): {bestM3U8PlaylistParentURL.geturl()}")
 
-    bestM3U8PlaylistResponse: str = downloadAndSaveFile(bestM3U8PlaylistURL, absolutePathOutput, constants.PLAYLIST_FILENAME)
+    bestM3U8PlaylistResponse: str = helpers.downloadAndSaveFile(bestM3U8PlaylistURL, absolutePathOutput, constants.PLAYLIST_FILENAME)
 
-    videoSegments: List[str] = filterResponseBySuffix(bestM3U8PlaylistResponse, ".ts")
+    videoSegments: List[str] = helpers.filterResponseBySuffix(bestM3U8PlaylistResponse, ".ts")
 
     if(isVerbose):
         for videoSegment in videoSegments:
@@ -220,7 +153,7 @@ def handleHLS(masterFileURL: str, absolutePathOutput: Path, isVerbose: bool) -> 
 
     print("Concatenating segments of the video...")
 
-    concatenateVideoSegments(absolutePathOutput)
+    helpers.concatenateVideoSegments(absolutePathOutput)
 
     print(f"Video downloaded to {outputFileAbsolutePath}")
     print("Done")
@@ -232,7 +165,7 @@ def parseCommandLineArguments() -> argparse.Namespace:
 
     argumentParser.add_argument(
         "master_file_url",
-        type = str,
+        type = url_utilities.parseURL,
         help = "Master file URL (M3U8)"
     )
 
@@ -252,24 +185,11 @@ def parseCommandLineArguments() -> argparse.Namespace:
 
     return argumentParser.parse_args()
 
-def getDefaultAbsolutePathOutput() -> Path:
-    POSIXTimestampInSeconds: str = str(
-        int(
-            datetime.now(tz=timezone.utc).timestamp()
-        )
-    )
-
-    return Path(
-        Path.home(),
-        "Downloads",
-        POSIXTimestampInSeconds
-    )
-
 def main() -> None:
     parsedCommandLineArguments: argparse.Namespace = parseCommandLineArguments()
 
-    masterFileURL: str = parsedCommandLineArguments.master_file_url
-    absolutePathOutput: Path = getDefaultAbsolutePathOutput()
+    masterFileURL: ParseResult = parsedCommandLineArguments.master_file_url
+    absolutePathOutput: Path = helpers.getDefaultAbsolutePathOutput()
     isVerbose: bool = parsedCommandLineArguments.verbose
 
     if(parsedCommandLineArguments.absolute_path_output):
