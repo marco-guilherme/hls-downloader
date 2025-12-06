@@ -75,12 +75,12 @@ def downloadVideoSegments(absolutePathOutput: Path,
         # 1080p.h264.mp4/seg-60-v1-a1.ts
         if(isRelativeURL):
             newURL = url_utilities.concatenateURL(baseM3U8PlaylistURL, videoSegment)
-            segmentPath = Path(absolutePathOutput)
+            segmentPath = Path(absolutePathOutput, videoSegment)
 
-        os.makedirs(os.path.dirname(segmentPath), exist_ok=True)
+            os.makedirs(os.path.dirname(segmentPath), exist_ok=True)
 
-        segmentsURL.append(newURL)
-        segmentPaths.append(segmentPath)
+            segmentsURL.append(newURL)
+            segmentPaths.append(segmentPath)
 
     print("Starting segments download")
 
@@ -171,16 +171,16 @@ def downloadUsingPlaylist(M3U8PlaylistURL: ParseResult, absolutePathOutput: Path
         for videoSegment in videoSegments:
             print(f"Video segment: {videoSegment}")
 
-    # downloadVideoSegments(
-    #     absolutePathOutput,
-    #     originURL,
-    #     videoSegments,
-    #     isVerbose
-    # )
+    downloadVideoSegments(
+        absolutePathOutput,
+        originURL,
+        videoSegments,
+        isVerbose
+    )
 
     print("Concatenating segments of the video...")
 
-    helpers.concatenateVideoSegments(absolutePathOutput)
+    helpers.concatenateVideoSegments(absolutePathOutput, isVerbose)
 
     print(f"Video downloaded to {outputFileAbsolutePath}")
     print("Done")

@@ -74,7 +74,7 @@ def isFFmpegInstalled() -> bool:
     except Exception:
         return False
 
-def concatenateVideoSegments(absolutePathOutput: Path) -> None:
+def concatenateVideoSegments(absolutePathOutput: Path, isVerbose: bool = False) -> None:
     if(not isFFmpegInstalled()):
         raise FileNotFoundError("FFmpeg not found in system path")
 
@@ -89,11 +89,18 @@ def concatenateVideoSegments(absolutePathOutput: Path) -> None:
         f".\\{constants.OUTPUT_FILENAME}"
     ]
 
+    standardOutput: int | None = subprocess.PIPE
+    standardError: int | None = subprocess.PIPE
+
+    if(isVerbose):
+        standardOutput = None
+        standardError = None
+
     subprocess.run(
         command,
-        cwd=absolutePathOutput,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        input="y\n"
+        cwd = absolutePathOutput,
+        stdout = standardOutput,
+        stderr = standardError,
+        text = True,
+        input = "y\n"
     )
