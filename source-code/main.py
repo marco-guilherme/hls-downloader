@@ -75,7 +75,7 @@ def downloadVideoSegments(absolutePathOutput: Path,
         # 1080p.h264.mp4/seg-60-v1-a1.ts
         if(isRelativeURL):
             newURL = url_utilities.concatenateURL(baseM3U8PlaylistURL, videoSegment)
-            segmentPath = Path(absolutePathOutput, videoSegment)
+            segmentPath = Path(absolutePathOutput)
 
         os.makedirs(os.path.dirname(segmentPath), exist_ok=True)
 
@@ -158,6 +158,33 @@ def handleHLS(masterFileURL: ParseResult, absolutePathOutput: Path, isVerbose: b
     print(f"Video downloaded to {outputFileAbsolutePath}")
     print("Done")
 
+def downloadUsingPlaylist(M3U8PlaylistURL: ParseResult, absolutePathOutput: Path, isVerbose: bool) -> None:
+    originURL: ParseResult = url_utilities.getOriginURL(M3U8PlaylistURL)
+    bestM3U8PlaylistResponse: str = helpers.downloadAndSaveFile(M3U8PlaylistURL, absolutePathOutput, constants.PLAYLIST_FILENAME)
+    outputFileAbsolutePath: Path = Path(absolutePathOutput, constants.OUTPUT_FILENAME)
+
+    print(f"Origin URL: {originURL.geturl()}")
+
+    videoSegments: List[str] = helpers.filterResponseBySuffix(bestM3U8PlaylistResponse, ".ts")
+
+    if(isVerbose):
+        for videoSegment in videoSegments:
+            print(f"Video segment: {videoSegment}")
+
+    # downloadVideoSegments(
+    #     absolutePathOutput,
+    #     originURL,
+    #     videoSegments,
+    #     isVerbose
+    # )
+
+    print("Concatenating segments of the video...")
+
+    helpers.concatenateVideoSegments(absolutePathOutput)
+
+    print(f"Video downloaded to {outputFileAbsolutePath}")
+    print("Done")
+
 def parseCommandLineArguments() -> argparse.Namespace:
     argumentParser: argparse.ArgumentParser = argparse.ArgumentParser(
         description="HLS downloader"
@@ -197,7 +224,11 @@ def main() -> None:
 
     absolutePathOutput.mkdir(exist_ok=True)
 
-    handleHLS(masterFileURL, absolutePathOutput, isVerbose)
+    # handleHLS(masterFileURL, absolutePathOutput, isVerbose)
+
+    M3U8PlaylistURL: ParseResult = masterFileURL
+
+    downloadUsingPlaylist(M3U8PlaylistURL, absolutePathOutput, isVerbose)
 
 if(__name__ == "__main__"):
     main()

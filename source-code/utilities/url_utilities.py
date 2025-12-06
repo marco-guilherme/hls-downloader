@@ -29,3 +29,8 @@ def concatenateURL(baseURL: ParseResult, stringToAppend: str) -> ParseResult:
     newURL: str = urljoin(baseURL.geturl(), stringToAppend)
 
     return parseURL(newURL)
+
+def getOriginURL(siteURL: ParseResult) -> ParseResult:
+    originURL: str = f"{siteURL.scheme}://{siteURL.netloc}"
+
+    return parseURL(originURL)

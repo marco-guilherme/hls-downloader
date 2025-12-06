@@ -80,6 +80,8 @@ def concatenateVideoSegments(absolutePathOutput: Path) -> None:
 
     command: List[str] = [
         "ffmpeg",
+        "-protocol_whitelist",
+        "file,http,https,tcp,tls",
         "-i",
         f".\\{constants.PLAYLIST_FILENAME}",
         "-c",
@@ -92,5 +94,6 @@ def concatenateVideoSegments(absolutePathOutput: Path) -> None:
         cwd=absolutePathOutput,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True
+        text=True,
+        input="y\n"
     )
