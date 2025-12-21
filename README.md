@@ -2,11 +2,9 @@
 Baixador de segmentos HLS e arquivos M3U8.
 
 ## Como executar
-
 Os comandos citados abaixo devem ser executados na raiz do repositório.
 
 ### Primeira vez
-
 Execute os comandos abaixo para obter o setup do projeto.
 
 1. Crie o ambiente virtual:
@@ -23,6 +21,7 @@ python -m venv .\hls-downloader-virtual-environment
 ```bash
 pip install -r .\requirements.txt
 ```
+
 #### Scripts PS1
 Passo a passo para executar corretamente scripts "PS1" (necessário fazer apenas uma vez).
 
@@ -61,8 +60,14 @@ Comando utilizado para iniciar o programa após o setup estar concluído:
 .\run.ps1
 ```
 
-## Juntar os segmentos
+### Atualização de dependências
+Ao adicionar/remover/atualizar uma ou mais dependências, execute o comando abaixo na raiz do repositório para atualizar o arquivo de controle correspondente:
 
+```bash
+pip freeze > .\requirements.txt
+```
+
+## Juntar os segmentos
 Comando utilizado para unir os segmentos em um único vídeo MP4:
 ```bash
 ffmpeg -i .\playlist.m3u8 -c copy .\output.mp4
